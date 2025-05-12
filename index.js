@@ -2,6 +2,9 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const app = express();
+const authRoutes = require("./routes/auth");
+const jwt = require("jsonwebtoken");
+const JWT_SECRET = process.env.JWT_SECRET;
 
 const corsOptions = {
   origin: "*",
@@ -15,11 +18,34 @@ const initializeDB = require("./db/db.connect");
 const SalesAgent = require("./models/salesAgent.model");
 const Lead = require("./models/lead.model");
 const Comment = require("./models/comment.model");
+const User = require("./models/User.model");
 
 initializeDB();
 
+app.use("/auth", authRoutes);
+
+const verifyJWT = (req, res, next) => {
+  const userToken = req.headers.authorization.split(" ")[1];
+
+  if (!userToken) {
+    return res
+      .status(401)
+      .json({ error: "userToken is required for authorization" });
+  }
+
+  try {
+    const decodedToken = jwt.verify(userToken, JWT_SECRET);
+
+    req.user = decodedToken;
+
+    next();
+  } catch (error) {
+    res.status(401).json({ error: "Invalid or expired userToken" });
+  }
+};
+
 //get call
-app.get("/agents", async (req, res) => {
+app.get("/agents", verifyJWT, async (req, res) => {
   try {
     const allAgents = await SalesAgent.find();
     if (allAgents.length > 0) {
@@ -29,11 +55,10 @@ app.get("/agents", async (req, res) => {
     }
   } catch (error) {
     res.status(500).json({ error: "Internal server error." });
-    console.log(error);
   }
 });
 
-app.get("/leads", async (req, res) => {
+app.get("/leads", verifyJWT, async (req, res) => {
   const queryParams = req.query;
   let filter = { ...queryParams };
 
@@ -55,12 +80,11 @@ app.get("/leads", async (req, res) => {
     }
     res.status(200).json(leads);
   } catch (error) {
-    console.log(error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-app.get("/leads/:leadId", async (req, res) => {
+app.get("/leads/:leadId", verifyJWT, async (req, res) => {
   const leadId = req.params.leadId;
   try {
     const lead = await Lead.findById(leadId).populate("salesAgent", "_id name");
@@ -74,13 +98,24 @@ app.get("/leads/:leadId", async (req, res) => {
 
     res.status(200).json(lead);
   } catch (error) {
-    console.log(error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.get("/profile", verifyJWT, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: "Profile not found" });
+    }
+    res.status(200).json(user);
+  } catch (error) {
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
 //post call
-app.post("/leads", async (req, res) => {
+app.post("/leads", verifyJWT, async (req, res) => {
   const leadInfo = req.body;
   const isClosed = leadInfo.status === "Closed";
   try {
@@ -93,12 +128,11 @@ app.post("/leads", async (req, res) => {
 
     res.status(201).json({ message: "Lead added successfully", savedLead });
   } catch (error) {
-    console.log(error);
     res.status(500).json({ Error: "Internal server error." });
   }
 });
 
-app.post("/agents", async (req, res) => {
+app.post("/agents", verifyJWT, async (req, res) => {
   const { name, email } = req.body;
 
   if (!name || !email) {
@@ -115,7 +149,6 @@ app.post("/agents", async (req, res) => {
       res.status(201).json(savedAgent);
     }
   } catch (error) {
-    console.log(error);
     if (error.code === 11000) {
       res
         .status(409)
@@ -126,7 +159,7 @@ app.post("/agents", async (req, res) => {
   }
 });
 
-app.post("/leads/:leadId", async (req, res) => {
+app.post("/leads/:leadId", verifyJWT, async (req, res) => {
   const leadId = req.params.leadId;
   const dataToUpdate = req.body;
 
@@ -149,12 +182,11 @@ app.post("/leads/:leadId", async (req, res) => {
 
     res.status(200).json(updatedLead);
   } catch (error) {
-    console.log(error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-app.post("/leads/:leadId/comments", async (req, res) => {
+app.post("/leads/:leadId/comments", verifyJWT, async (req, res) => {
   const leadId = req.params.leadId;
   const comment = req.body;
   const { author, commentText } = comment;
@@ -181,7 +213,6 @@ app.post("/leads/:leadId/comments", async (req, res) => {
       return res.status(200).json(leadWithComments);
     }
   } catch (error) {
-    console.log(error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
