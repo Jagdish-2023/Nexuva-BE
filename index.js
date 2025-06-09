@@ -7,7 +7,7 @@ const jwt = require("jsonwebtoken");
 const JWT_SECRET = process.env.JWT_SECRET;
 
 const corsOptions = {
-  origin: "*",
+  origin: "https://nexuva.vercel.app",
   Credentials: true,
   optionSuccessStatus: 200,
 };
